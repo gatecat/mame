@@ -89,6 +89,9 @@ private:
 	void clkrst_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 	void bootctl_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 
+	uint32_t adc_r(offs_t offset);
+	void adc_w(offs_t offset, uint32_t data, uint32_t mem_mask);
+
 	uint32_t ssp_r(offs_t offset);
 	void ssp_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 
@@ -210,7 +213,8 @@ void pixter_multimedia_state::arm7_map(address_map &map)
 	map(0x8000'0000, 0x8000'1fff).rom().region("bootrom", 0);
 
 	// APB Peripherals
-
+	// ADC
+	map(0xfffc'3000, 0xfffc'30ff).r(FUNC(pixter_multimedia_state::adc_r)).w(FUNC(pixter_multimedia_state::adc_w));
 	// Timers
 	map(0xfffc'4000, 0xfffc'402f).rw(m_timers[0], FUNC(lh79524_timer_device::read), FUNC(lh79524_timer_device::write));
 	map(0xfffc'4030, 0xfffc'404f).rw(m_timers[1], FUNC(lh79524_timer_device::read), FUNC(lh79524_timer_device::write));
@@ -258,6 +262,18 @@ uint32_t pixter_multimedia_state::ssp_r(offs_t offset) {
 }
 void pixter_multimedia_state::ssp_w(offs_t offset, uint32_t data, uint32_t mem_mask) {
 	logerror("%s: SSP write 0x%04X 0x%08X\n", machine().describe_context(), offset << 2, data);
+}
+
+uint32_t pixter_multimedia_state::adc_r(offs_t offset) {
+	switch (offset << 2) {
+		case 0x20: // FIFO status
+			return 4;
+		default:
+			return 0;
+	}
+}
+void pixter_multimedia_state::adc_w(offs_t offset, uint32_t data, uint32_t mem_mask) {
+	logerror("%s: ADC write 0x%04X 0x%08X\n", machine().describe_context(), offset << 2, data);
 }
 
 static INPUT_PORTS_START( pixter_multimedia )
