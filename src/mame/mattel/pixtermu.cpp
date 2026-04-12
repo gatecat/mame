@@ -49,6 +49,7 @@
 #include "cpu/arm7/arm7.h"
 
 #include "machine/lh79524_timer.h"
+#include "machine/vic_pl192.h"
 
 #include "softlist_dev.h"
 
@@ -68,6 +69,7 @@ public:
 		, m_ndcs0(*this, "ndcs0")
 		, m_internal_sram(*this, "internal_sram")
 		, m_timers(*this, "timer%u", 0U)
+		, m_vic(*this, "vic")
 		, m_clkrst(*this, "clkrst", 0x1000, ENDIANNESS_LITTLE)
 		, m_bootctl(*this, "bootctl", 0x1000, ENDIANNESS_LITTLE)
 		, m_lcdc(*this, "lcdc", 0x1000, ENDIANNESS_LITTLE)
@@ -94,6 +96,7 @@ private:
 	void clkrst_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 	void bootctl_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 	void lcdc_w(offs_t offset, uint32_t data, uint32_t mem_mask);
+	uint32_t lcdc_r(offs_t offset);
 
 	uint32_t adc_r(offs_t offset);
 	void adc_w(offs_t offset, uint32_t data, uint32_t mem_mask);
@@ -102,8 +105,7 @@ private:
 	void ssp_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 
 	uint32_t gpioab_r(offs_t offset);
-
-	void ivec_w(offs_t offset, uint32_t data, uint32_t mem_mask);
+	uint32_t gpioij_r(offs_t offset);
 
 
 	void apb_remap(uint32_t data);
@@ -115,6 +117,7 @@ private:
 	required_shared_ptr<uint32_t> m_ndcs0;
 	required_shared_ptr<uint32_t> m_internal_sram;
 	required_device_array<lh79524_timer_device, 3> m_timers;
+	required_device<vic_pl190_device> m_vic;
 
 	memory_share_creator<uint32_t> m_clkrst;
 	memory_share_creator<uint32_t> m_bootctl;
@@ -237,6 +240,8 @@ void pixter_multimedia_state::arm7_map(address_map &map)
 	map(0xfffc'4050, 0xfffc'406f).rw(m_timers[2], FUNC(lh79524_timer_device::read), FUNC(lh79524_timer_device::write));
 	// SSP
 	map(0xfffc'6000, 0xfffc'602f).r(FUNC(pixter_multimedia_state::ssp_r)).w(FUNC(pixter_multimedia_state::ssp_w));
+	// GPIO I/J
+	map(0xfffd'b000, 0xfffd'b00f).r(FUNC(pixter_multimedia_state::gpioij_r));
 	// GPIO A/B
 	map(0xfffd'f000, 0xfffd'f00f).r(FUNC(pixter_multimedia_state::gpioab_r));
 	// Reset Clock and Power Controller
@@ -248,11 +253,11 @@ void pixter_multimedia_state::arm7_map(address_map &map)
 	// External Memory Control
 	map(0xffff'1000, 0xffff'1fff).ram();
 	// Color LCD Control
-	map(0xffff'4000, 0xffff'4fff).ram().share("lcdc").w(FUNC(pixter_multimedia_state::lcdc_w));
+	map(0xffff'4000, 0xffff'4fff).ram().share("lcdc").w(FUNC(pixter_multimedia_state::lcdc_w)).r(FUNC(pixter_multimedia_state::lcdc_r));
 	// USB Device
 	map(0xffff'5000, 0xffff'5fff).ram();
 	// Interrupt Vector Control
-	map(0xffff'f000, 0xffff'ffff).ram().w(FUNC(pixter_multimedia_state::ivec_w));
+	map(0xffff'f000, 0xffff'ffff).m(m_vic, FUNC(vic_pl190_device::map)); // interrupt controller
 }
 
 void pixter_multimedia_state::clkrst_w(offs_t offset, uint32_t data, uint32_t mem_mask)
@@ -286,9 +291,10 @@ void pixter_multimedia_state::lcdc_w(offs_t offset, uint32_t data, uint32_t mem_
 	COMBINE_DATA(&m_lcdc[offset]);
 }
 
-void pixter_multimedia_state::ivec_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+uint32_t pixter_multimedia_state::lcdc_r(offs_t offset)
 {
-	logerror("%s: IVEC write 0x%04X 0x%08X\n", machine().describe_context(), offset << 2, data);
+	logerror("%s: LCDC read 0x%04x\n", machine().describe_context(), offset << 2);
+	return m_lcdc[offset];
 }
 
 uint32_t pixter_multimedia_state::ssp_r(offs_t offset) {
@@ -324,7 +330,18 @@ uint32_t pixter_multimedia_state::gpioab_r(offs_t offset) {
 
 	switch (offset << 2) {
 		case 0x04: // port B data
-			return 2;
+			return 0xFF;
+		default:
+			return 0;
+	}
+}
+
+uint32_t pixter_multimedia_state::gpioij_r(offs_t offset) {
+	logerror("%s: GPIOIJ read 0x%04X\n", machine().describe_context(), offset << 2);
+
+	switch (offset << 2) {
+		case 0x00: // port I data
+			return 0xFF;
 		default:
 			return 0;
 	}
@@ -339,11 +356,18 @@ void pixter_multimedia_state::pixter_multimedia(machine_config &config)
 	ARM7(config, m_maincpu, 76'205'000);
 	m_maincpu->set_addrmap(AS_PROGRAM, &pixter_multimedia_state::arm7_map);
 
+	PL190_VIC(config, m_vic, 0);
+	m_vic->out_irq_cb().set_inputline(m_maincpu, arm7_cpu_device::ARM7_IRQ_LINE);
+	m_vic->out_fiq_cb().set_inputline(m_maincpu, arm7_cpu_device::ARM7_FIRQ_LINE);
+
 	for (int i=0; i<3; i++)
 	{
 		LH79524_TIMER(config, m_timers[i], 76'205'000);
 		m_timers[i]->set_timer_index(i);
 	}
+	m_timers[0]->irq_cb().set(m_vic, FUNC(vic_pl190_device::irq_w<4>));
+	m_timers[1]->irq_cb().set(m_vic, FUNC(vic_pl190_device::irq_w<5>));
+	m_timers[2]->irq_cb().set(m_vic, FUNC(vic_pl190_device::irq_w<6>));
 
 	GENERIC_CARTSLOT(config, m_cart, generic_plain_slot, "pixter_cart");
 	m_cart->set_endian(ENDIANNESS_LITTLE);
