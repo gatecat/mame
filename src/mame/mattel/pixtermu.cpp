@@ -95,6 +95,8 @@ private:
 	uint32_t ssp_r(offs_t offset);
 	void ssp_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 
+	uint32_t gpioab_r(offs_t offset);
+
 	void apb_remap(uint32_t data);
 
 	required_device<generic_slot_device> m_cart;
@@ -221,7 +223,8 @@ void pixter_multimedia_state::arm7_map(address_map &map)
 	map(0xfffc'4050, 0xfffc'406f).rw(m_timers[2], FUNC(lh79524_timer_device::read), FUNC(lh79524_timer_device::write));
 	// SSP
 	map(0xfffc'6000, 0xfffc'602f).r(FUNC(pixter_multimedia_state::ssp_r)).w(FUNC(pixter_multimedia_state::ssp_w));
-
+	// GPIO A/B
+	map(0xfffd'f000, 0xfffd'f00f).r(FUNC(pixter_multimedia_state::gpioab_r));
 	// Reset Clock and Power Controller
 	map(0xfffe'2000, 0xfffe'2fff).ram().share("clkrst").w(FUNC(pixter_multimedia_state::clkrst_w));
 	// Boot Controller
@@ -274,6 +277,15 @@ uint32_t pixter_multimedia_state::adc_r(offs_t offset) {
 }
 void pixter_multimedia_state::adc_w(offs_t offset, uint32_t data, uint32_t mem_mask) {
 	logerror("%s: ADC write 0x%04X 0x%08X\n", machine().describe_context(), offset << 2, data);
+}
+
+uint32_t pixter_multimedia_state::gpioab_r(offs_t offset) {
+	switch (offset << 2) {
+		case 0x04: // port B data
+			return 2;
+		default:
+			return 0;
+	}
 }
 
 static INPUT_PORTS_START( pixter_multimedia )
