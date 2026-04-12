@@ -103,6 +103,9 @@ private:
 
 	uint32_t gpioab_r(offs_t offset);
 
+	void ivec_w(offs_t offset, uint32_t data, uint32_t mem_mask);
+
+
 	void apb_remap(uint32_t data);
 
 	required_device<palette_device> m_palette;
@@ -249,7 +252,7 @@ void pixter_multimedia_state::arm7_map(address_map &map)
 	// USB Device
 	map(0xffff'5000, 0xffff'5fff).ram();
 	// Interrupt Vector Control
-	map(0xffff'f000, 0xffff'ffff).ram();
+	map(0xffff'f000, 0xffff'ffff).ram().w(FUNC(pixter_multimedia_state::ivec_w));
 }
 
 void pixter_multimedia_state::clkrst_w(offs_t offset, uint32_t data, uint32_t mem_mask)
@@ -283,7 +286,13 @@ void pixter_multimedia_state::lcdc_w(offs_t offset, uint32_t data, uint32_t mem_
 	COMBINE_DATA(&m_lcdc[offset]);
 }
 
+void pixter_multimedia_state::ivec_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+{
+	logerror("%s: IVEC write 0x%04X 0x%08X\n", machine().describe_context(), offset << 2, data);
+}
+
 uint32_t pixter_multimedia_state::ssp_r(offs_t offset) {
+	logerror("%s: SSP read 0x%04X\n", machine().describe_context(), offset << 2);
 	switch (offset << 2) {
 		case 0x0C: // status
 			return 1;
@@ -296,7 +305,10 @@ void pixter_multimedia_state::ssp_w(offs_t offset, uint32_t data, uint32_t mem_m
 }
 
 uint32_t pixter_multimedia_state::adc_r(offs_t offset) {
+	logerror("%s: ADC read 0x%04X\n", machine().describe_context(), offset << 2);
 	switch (offset << 2) {
+		case 0x1C: // IRQ status
+			return 4;
 		case 0x20: // FIFO status
 			return 4;
 		default:
@@ -308,6 +320,8 @@ void pixter_multimedia_state::adc_w(offs_t offset, uint32_t data, uint32_t mem_m
 }
 
 uint32_t pixter_multimedia_state::gpioab_r(offs_t offset) {
+	logerror("%s: GPIOAB read 0x%04X\n", machine().describe_context(), offset << 2);
+
 	switch (offset << 2) {
 		case 0x04: // port B data
 			return 2;
