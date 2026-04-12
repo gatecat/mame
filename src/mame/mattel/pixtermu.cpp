@@ -52,6 +52,9 @@
 
 #include "softlist_dev.h"
 
+#include "emupal.h"
+#include "screen.h"
+
 namespace {
 
 class pixter_multimedia_state : public driver_device
@@ -59,6 +62,7 @@ class pixter_multimedia_state : public driver_device
 public:
 	pixter_multimedia_state(const machine_config &mconfig, device_type type, const char *tag)
 		: driver_device(mconfig, type, tag)
+		, m_palette(*this, "palette")
 		, m_cart(*this, "cartslot")
 		, m_maincpu(*this, "maincpu")
 		, m_ndcs0(*this, "ndcs0")
@@ -66,6 +70,7 @@ public:
 		, m_timers(*this, "timer%u", 0U)
 		, m_clkrst(*this, "clkrst", 0x1000, ENDIANNESS_LITTLE)
 		, m_bootctl(*this, "bootctl", 0x1000, ENDIANNESS_LITTLE)
+		, m_lcdc(*this, "lcdc", 0x1000, ENDIANNESS_LITTLE)
 		, m_remap_view(*this, "remap")
 	{ }
 
@@ -88,6 +93,7 @@ private:
 	void arm7_map(address_map &map) ATTR_COLD;
 	void clkrst_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 	void bootctl_w(offs_t offset, uint32_t data, uint32_t mem_mask);
+	void lcdc_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 
 	uint32_t adc_r(offs_t offset);
 	void adc_w(offs_t offset, uint32_t data, uint32_t mem_mask);
@@ -99,6 +105,8 @@ private:
 
 	void apb_remap(uint32_t data);
 
+	required_device<palette_device> m_palette;
+
 	required_device<generic_slot_device> m_cart;
 	required_device<arm7_cpu_device> m_maincpu;
 	required_shared_ptr<uint32_t> m_ndcs0;
@@ -107,12 +115,15 @@ private:
 
 	memory_share_creator<uint32_t> m_clkrst;
 	memory_share_creator<uint32_t> m_bootctl;
+	memory_share_creator<uint32_t> m_lcdc;
 	memory_view m_remap_view;
 };
 
 void pixter_multimedia_state::apb_remap(uint32_t data)
 {
 	// User's Guide - 1.6 Memory Interface Architecture
+	logerror("FOO remap %d\n", data);
+
 	if (data == 0) {
 		m_remap_view.select((m_bootctl[BOOTCTL_PBC] & 0b0100) && (m_bootctl[BOOTCTL_CS1OV] & 0b1) ? 0 : 3);
 	} else if (data < 3) {
@@ -234,7 +245,7 @@ void pixter_multimedia_state::arm7_map(address_map &map)
 	// External Memory Control
 	map(0xffff'1000, 0xffff'1fff).ram();
 	// Color LCD Control
-	map(0xffff'4000, 0xffff'4fff).ram();
+	map(0xffff'4000, 0xffff'4fff).ram().share("lcdc").w(FUNC(pixter_multimedia_state::lcdc_w));
 	// USB Device
 	map(0xffff'5000, 0xffff'5fff).ram();
 	// Interrupt Vector Control
@@ -243,6 +254,8 @@ void pixter_multimedia_state::arm7_map(address_map &map)
 
 void pixter_multimedia_state::clkrst_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	logerror("%s: CLKRST write 0x%04X 0x%08X\n", machine().describe_context(), offset << 2, data);
+
 	if (offset == CLKRST_REMAP) {
 		apb_remap(data);
 	}
@@ -252,7 +265,22 @@ void pixter_multimedia_state::clkrst_w(offs_t offset, uint32_t data, uint32_t me
 
 void pixter_multimedia_state::bootctl_w(offs_t offset, uint32_t data, uint32_t mem_mask)
 {
+	logerror("%s: BOOTCTL write 0x%04X 0x%08X\n", machine().describe_context(), offset << 2, data);
+
 	COMBINE_DATA(&m_bootctl[offset]);
+}
+
+void pixter_multimedia_state::lcdc_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+{
+	offs_t addr = offset << 2;
+	logerror("%s: LCDC write 0x%04X 0x%08X\n", machine().describe_context(), addr, data);
+
+	if (addr >= 0x200 && addr <= 0x3fc) {
+		unsigned base = ((addr - 0x200) >> 2) * 2;
+		m_palette->set_pen_color(base, data & 0xFFFF);
+		m_palette->set_pen_color(base + 1, (data >> 16) & 0xFFFF);
+	}
+	COMBINE_DATA(&m_lcdc[offset]);
 }
 
 uint32_t pixter_multimedia_state::ssp_r(offs_t offset) {
@@ -308,6 +336,8 @@ void pixter_multimedia_state::pixter_multimedia(machine_config &config)
 	m_cart->set_width(GENERIC_ROM32_WIDTH);
 	m_cart->set_device_load(FUNC(pixter_multimedia_state::cart_load));
 	m_cart->set_must_be_loaded(false);
+
+	PALETTE(config, m_palette).set_format(palette_device::IRGB_1555, 256);
 
 	SOFTWARE_LIST(config, "cart_list").set_original("pixter_cart");
 }
