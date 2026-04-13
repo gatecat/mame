@@ -304,11 +304,17 @@ void pixter_multimedia_state::lcdc_w(offs_t offset, uint32_t data, uint32_t mem_
 {
 	offs_t addr = offset << 2;
 	logerror("%s: LCDC write 0x%04X 0x%08X\n", machine().describe_context(), addr, data);
-
 	if (addr >= 0x200 && addr <= 0x3fc) {
 		unsigned base = ((addr - 0x200) >> 2) * 2;
-		m_palette->set_pen_color(base, data & 0xFFFF);
-		m_palette->set_pen_color(base + 1, (data >> 16) & 0xFFFF);
+		for (int j = 0; j < 2; j++) {
+			uint16_t ibgr1555 = data >> (16 * j);
+			uint16_t i = ((ibgr1555 >> 15) & 0x1) << 2;
+			uint16_t b = ((ibgr1555 >> 10) & 0x1F) << 3 | i;
+			uint16_t g = ((ibgr1555 >> 5) & 0x1F) << 3 | i;
+			uint16_t r = ((ibgr1555 >> 0) & 0x1F) << 3 | i;
+
+			m_palette->set_pen_color(base + j, r, g, b);
+		}
 	}
 	COMBINE_DATA(&m_lcdc[offset]);
 }
