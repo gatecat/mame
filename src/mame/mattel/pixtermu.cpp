@@ -330,7 +330,7 @@ uint32_t pixter_multimedia_state::adc_r(offs_t offset) {
 		case 0x08: // result
 			if (adc_count > 0)
 				--adc_count;
-			return 0 | (adc_count & 0xF);
+			return 0 | (((m_adc[0x10 >> 2] & 0xF) -  adc_count) & 0xF);
 		case 0x1C: // IRQ status
 			return 4;
 		case 0x20: // FIFO status
@@ -400,9 +400,9 @@ uint32_t pixter_multimedia_state::screen_update_pixtermu(screen_device &screen, 
 		return 0;
 	const uint32_t base = (m_lcdc[0x010>>2] >> 2) & 0xfffff;
 
-	for (int y = 0; y < 120; y++) {
+	for (int y = 0; y < 160; y++) {
 		for (int x = 0; x < 160; x++) {
-			uint8_t ind = m_ndcs0[base + (y * 160 + x) / 4] >> ((x % 4) * 8);
+			uint8_t ind = m_ndcs0[base + (y * 162 + x + 1) / 4] >> ((x % 4) * 8);
 			bitmap.pix(y, x) = ind;
 		}
 	}
@@ -445,8 +445,8 @@ void pixter_multimedia_state::pixter_multimedia(machine_config &config)
 
 	m_screen->set_refresh_hz(60);
 	m_screen->set_vblank_time(ATTOSECONDS_IN_USEC(2500) /* not accurate */);
-	m_screen->set_size(160, 120);
-	m_screen->set_visarea(0, 160-1, 0, 120-1);
+	m_screen->set_size(160, 160);
+	m_screen->set_visarea(0, 160-1, 0, 160-1);
 	m_screen->set_screen_update(FUNC(pixter_multimedia_state::screen_update_pixtermu));
 
 	SOFTWARE_LIST(config, "cart_list").set_original("pixter_cart");
