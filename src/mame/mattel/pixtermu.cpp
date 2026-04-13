@@ -374,9 +374,9 @@ uint32_t pixter_multimedia_state::screen_update_pixtermu(screen_device &screen, 
 		return 0;
 	const uint32_t base = (m_lcdc[0x010>>2] >> 2) & 0xfffff;
 
-	for (int y = 0; y < 160; y++) {
-		for (int x = 0; x < 120; x++) {
-			uint8_t ind = m_ndcs0[base + (y * 120 + x) / 4] >> ((x % 4) * 8);
+	for (int y = 0; y < 120; y++) {
+		for (int x = 0; x < 160; x++) {
+			uint8_t ind = m_ndcs0[base + (y * 160 + x) / 4] >> ((x % 4) * 8);
 			bitmap.pix(y, x) = ind;
 		}
 	}
