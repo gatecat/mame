@@ -93,7 +93,7 @@ TIMER_CALLBACK_MEMBER(lh79524_timer_device::timer_update)
 	if (m_cnt == limit)
 	{
 		m_cnt = 0;
-		m_control |= 0x0001;
+		m_status |= 0x0001;
 	}
 	else {
 		m_cnt++;
@@ -141,6 +141,10 @@ void lh79524_timer_device::write(offs_t offset, uint32_t data, uint32_t mem_mask
 	switch (addr)
 	{
 	case 0x00:
+		if (data & 0x1) {
+			m_cnt = 0;
+			data &= ~0x1;
+		}
 		COMBINE_DATA(&m_control);
 		lh79524_timer_device::device_clock_changed();
 		break;
