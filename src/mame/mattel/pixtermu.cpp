@@ -74,6 +74,7 @@ public:
 		, m_clkrst(*this, "clkrst", 0x1000, ENDIANNESS_LITTLE)
 		, m_bootctl(*this, "bootctl", 0x1000, ENDIANNESS_LITTLE)
 		, m_lcdc(*this, "lcdc", 0x1000, ENDIANNESS_LITTLE)
+		, m_adc(*this, "adc", 0x100, ENDIANNESS_LITTLE)
 		, m_remap_view(*this, "remap")
 	{ }
 
@@ -110,6 +111,8 @@ private:
 	uint32_t gpioij_r(offs_t offset);
 
 
+	int adc_count;
+
 	void apb_remap(uint32_t data);
 
 	uint32_t screen_update_pixtermu(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
@@ -127,6 +130,7 @@ private:
 	memory_share_creator<uint32_t> m_clkrst;
 	memory_share_creator<uint32_t> m_bootctl;
 	memory_share_creator<uint32_t> m_lcdc;
+	memory_share_creator<uint32_t> m_adc;
 	memory_view m_remap_view;
 };
 
@@ -166,6 +170,9 @@ void pixter_multimedia_state::machine_reset()
 	m_bootctl[BOOTCTL_EPM] = 0b1111; // All external devices are accessible following reset
 
 	m_clkrst[CLKRST_REMAP] = 0b00; // Map nCS1
+
+	adc_count = 0;
+
 	apb_remap(m_clkrst[CLKRST_REMAP]);
 }
 
@@ -238,7 +245,7 @@ void pixter_multimedia_state::arm7_map(address_map &map)
 
 	// APB Peripherals
 	// ADC
-	map(0xfffc'3000, 0xfffc'30ff).r(FUNC(pixter_multimedia_state::adc_r)).w(FUNC(pixter_multimedia_state::adc_w));
+	map(0xfffc'3000, 0xfffc'30ff).ram().share("adc").r(FUNC(pixter_multimedia_state::adc_r)).w(FUNC(pixter_multimedia_state::adc_w));
 	// Timers
 	map(0xfffc'4000, 0xfffc'402f).rw(m_timers[0], FUNC(lh79524_timer_device::read), FUNC(lh79524_timer_device::write));
 	map(0xfffc'4030, 0xfffc'404f).rw(m_timers[1], FUNC(lh79524_timer_device::read), FUNC(lh79524_timer_device::write));
@@ -320,16 +327,35 @@ void pixter_multimedia_state::ssp_w(offs_t offset, uint32_t data, uint32_t mem_m
 uint32_t pixter_multimedia_state::adc_r(offs_t offset) {
 	logerror("%s: ADC read 0x%04X\n", machine().describe_context(), offset << 2);
 	switch (offset << 2) {
+		case 0x08: // result
+			if (adc_count > 0)
+				--adc_count;
+			return 0 | (adc_count & 0xF);
 		case 0x1C: // IRQ status
 			return 4;
 		case 0x20: // FIFO status
-			return 4;
+			if (adc_count == 16)
+				return 8;
+			else if (adc_count == 0)
+				return 4;
+			else
+				return 0;
 		default:
-			return 0;
+			return m_adc[offset];
 	}
 }
 void pixter_multimedia_state::adc_w(offs_t offset, uint32_t data, uint32_t mem_mask) {
 	logerror("%s: ADC write 0x%04X 0x%08X\n", machine().describe_context(), offset << 2, data);
+	switch (offset << 2) {
+		case 0x14:
+			if(data & 0x4) { // start conversion
+				adc_count = (m_adc[0x10 >> 2] & 0xF) + 1;
+			};
+			return;
+		default:
+			break;
+	}
+	COMBINE_DATA(&m_adc[offset]);
 }
 
 uint32_t pixter_multimedia_state::gpioab_r(offs_t offset) {
