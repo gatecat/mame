@@ -426,7 +426,8 @@ uint32_t pixter_multimedia_state::screen_update_pixtermu(screen_device &screen, 
 
 	for (int y = 0; y < 160; y++) {
 		for (int x = 0; x < 160; x++) {
-			uint8_t ind = m_ndcs0[base + (y * 162 + x + 1) / 4] >> ((x % 4) * 8);
+			int pixel = (y * 162 + x + 1);
+			uint8_t ind = m_ndcs0[base + pixel / 4] >> ((pixel % 4) * 8);
 			bitmap.pix(y, x) = ind;
 		}
 	}
