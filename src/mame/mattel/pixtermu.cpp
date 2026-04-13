@@ -64,6 +64,7 @@ public:
 	pixter_multimedia_state(const machine_config &mconfig, device_type type, const char *tag)
 		: driver_device(mconfig, type, tag)
 		, m_palette(*this, "palette")
+		, m_screen(*this, "screen")
 		, m_cart(*this, "cartslot")
 		, m_maincpu(*this, "maincpu")
 		, m_ndcs0(*this, "ndcs0")
@@ -111,7 +112,10 @@ private:
 
 	void apb_remap(uint32_t data);
 
+	uint32_t screen_update_pixtermu(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+
 	required_device<palette_device> m_palette;
+	required_device<screen_device> m_screen;
 
 	required_device<generic_slot_device> m_cart;
 	required_device<arm7_cpu_device> m_maincpu;
@@ -364,6 +368,22 @@ uint32_t pixter_multimedia_state::gpioij_r(offs_t offset) {
 	}
 }
 
+uint32_t pixter_multimedia_state::screen_update_pixtermu(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
+{
+	if (!BIT(m_lcdc[0x01C>>2], 1))
+		return 0;
+	const uint32_t base = (m_lcdc[0x010>>2] >> 2) & 0xfffff;
+
+	for (int y = 0; y < 160; y++) {
+		for (int x = 0; x < 120; x++) {
+			uint8_t ind = m_ndcs0[base + (y * 120 + x) / 4] >> ((x % 4) * 8);
+			bitmap.pix(y, x) = ind;
+		}
+	}
+
+	return 0;
+}
+
 static INPUT_PORTS_START( pixter_multimedia )
 INPUT_PORTS_END
 
@@ -393,6 +413,15 @@ void pixter_multimedia_state::pixter_multimedia(machine_config &config)
 	m_cart->set_must_be_loaded(false);
 
 	PALETTE(config, m_palette).set_format(palette_device::IRGB_1555, 256);
+
+	SCREEN(config, m_screen, SCREEN_TYPE_RASTER);
+	m_screen->set_palette("palette");
+
+	m_screen->set_refresh_hz(60);
+	m_screen->set_vblank_time(ATTOSECONDS_IN_USEC(2500) /* not accurate */);
+	m_screen->set_size(160, 120);
+	m_screen->set_visarea(0, 160-1, 0, 120-1);
+	m_screen->set_screen_update(FUNC(pixter_multimedia_state::screen_update_pixtermu));
 
 	SOFTWARE_LIST(config, "cart_list").set_original("pixter_cart");
 }
