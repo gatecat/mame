@@ -75,6 +75,7 @@ public:
 		, m_bootctl(*this, "bootctl", 0x1000, ENDIANNESS_LITTLE)
 		, m_lcdc(*this, "lcdc", 0x1000, ENDIANNESS_LITTLE)
 		, m_adc(*this, "adc", 0x100, ENDIANNESS_LITTLE)
+		, m_dma(*this, "dma", 0x100, ENDIANNESS_LITTLE)
 		, m_remap_view(*this, "remap")
 	{ }
 
@@ -103,6 +104,8 @@ private:
 	uint32_t adc_r(offs_t offset);
 	void adc_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 
+	void dma_w(offs_t offset, uint32_t data, uint32_t mem_mask);
+
 	uint32_t ssp_r(offs_t offset);
 	void ssp_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 
@@ -116,6 +119,7 @@ private:
 	void apb_remap(uint32_t data);
 
 	uint32_t screen_update_pixtermu(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	void screen_vblank(int state);
 
 	required_device<palette_device> m_palette;
 	required_device<screen_device> m_screen;
@@ -131,6 +135,8 @@ private:
 	memory_share_creator<uint32_t> m_bootctl;
 	memory_share_creator<uint32_t> m_lcdc;
 	memory_share_creator<uint32_t> m_adc;
+	memory_share_creator<uint32_t> m_dma;
+
 	memory_view m_remap_view;
 };
 
@@ -258,6 +264,8 @@ void pixter_multimedia_state::arm7_map(address_map &map)
 	map(0xfffd'c000, 0xfffd'c00f).r(FUNC(pixter_multimedia_state::gpiogh_r));
 	// GPIO A/B
 	map(0xfffd'f000, 0xfffd'f00f).r(FUNC(pixter_multimedia_state::gpioab_r));
+	// DMA
+	map(0xfffe'1000, 0xfffe'10ff).ram().share("dma").w(FUNC(pixter_multimedia_state::dma_w));
 	// Reset Clock and Power Controller
 	map(0xfffe'2000, 0xfffe'2fff).ram().share("clkrst").w(FUNC(pixter_multimedia_state::clkrst_w));
 	// Boot Controller
@@ -330,7 +338,7 @@ uint32_t pixter_multimedia_state::adc_r(offs_t offset) {
 		case 0x08: // result
 			if (adc_count > 0)
 				--adc_count;
-			return 0 | (((m_adc[0x10 >> 2] & 0xF) -  adc_count) & 0xF);
+			return 0x3FF0 | (((m_adc[0x10 >> 2] & 0xF) -  adc_count) & 0xF);
 		case 0x1C: // IRQ status
 			return 4;
 		case 0x20: // FIFO status
@@ -374,9 +382,9 @@ uint32_t pixter_multimedia_state::gpiogh_r(offs_t offset) {
 
 	switch (offset << 2) {
 		case 0x00: // port G data
-			return 0xFF;
+			return 0x00;
 		case 0x04: // port H data
-			return 0xFF;
+			return 0x00;
 		default:
 			return 0;
 	}
@@ -394,6 +402,22 @@ uint32_t pixter_multimedia_state::gpioij_r(offs_t offset) {
 	}
 }
 
+void pixter_multimedia_state::dma_w(offs_t offset, uint32_t data, uint32_t mem_mask)
+{
+	logerror("%s: DMA write 0x%04X 0x%08X\n", machine().describe_context(), offset << 2, data);
+	switch (offset << 2) {
+		case 0xF4: // interrupt clear
+			if (data & 0x2) {
+				m_dma[0xF8 >> 2] &= ~0x2;
+			}
+			break;
+		default:
+			COMBINE_DATA(&m_dma[offset]);
+			break;
+	}
+	m_vic->irq_w<21>(((m_dma[0xF0 >> 2] & 0x2) & (m_dma[0xF8 >> 2] & 0x2)) ? ASSERT_LINE : CLEAR_LINE);
+}
+
 uint32_t pixter_multimedia_state::screen_update_pixtermu(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
 {
 	if (!BIT(m_lcdc[0x01C>>2], 1))
@@ -408,6 +432,13 @@ uint32_t pixter_multimedia_state::screen_update_pixtermu(screen_device &screen, 
 	}
 
 	return 0;
+}
+
+void pixter_multimedia_state::screen_vblank(int state)
+{
+	// This is definitely wrong, but it's the best place to set this right now...
+	m_dma[0xF8 >> 2] |= 0x2;
+	m_vic->irq_w<21>(((m_dma[0xF0 >> 2] & 0x2) & (m_dma[0xF8 >> 2] & 0x2)) ? ASSERT_LINE : CLEAR_LINE);
 }
 
 static INPUT_PORTS_START( pixter_multimedia )
@@ -448,6 +479,10 @@ void pixter_multimedia_state::pixter_multimedia(machine_config &config)
 	m_screen->set_size(160, 160);
 	m_screen->set_visarea(0, 160-1, 0, 160-1);
 	m_screen->set_screen_update(FUNC(pixter_multimedia_state::screen_update_pixtermu));
+
+
+	m_screen->screen_vblank().set(FUNC(pixter_multimedia_state::screen_vblank));
+
 
 	SOFTWARE_LIST(config, "cart_list").set_original("pixter_cart");
 }
