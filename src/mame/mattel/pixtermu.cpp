@@ -105,6 +105,7 @@ private:
 	void ssp_w(offs_t offset, uint32_t data, uint32_t mem_mask);
 
 	uint32_t gpioab_r(offs_t offset);
+	uint32_t gpiogh_r(offs_t offset);
 	uint32_t gpioij_r(offs_t offset);
 
 
@@ -242,6 +243,8 @@ void pixter_multimedia_state::arm7_map(address_map &map)
 	map(0xfffc'6000, 0xfffc'602f).r(FUNC(pixter_multimedia_state::ssp_r)).w(FUNC(pixter_multimedia_state::ssp_w));
 	// GPIO I/J
 	map(0xfffd'b000, 0xfffd'b00f).r(FUNC(pixter_multimedia_state::gpioij_r));
+	// GPIO G/H
+	map(0xfffd'c000, 0xfffd'c00f).r(FUNC(pixter_multimedia_state::gpiogh_r));
 	// GPIO A/B
 	map(0xfffd'f000, 0xfffd'f00f).r(FUNC(pixter_multimedia_state::gpioab_r));
 	// Reset Clock and Power Controller
@@ -335,6 +338,20 @@ uint32_t pixter_multimedia_state::gpioab_r(offs_t offset) {
 			return 0;
 	}
 }
+
+uint32_t pixter_multimedia_state::gpiogh_r(offs_t offset) {
+	logerror("%s: GPIOGH read 0x%04X\n", machine().describe_context(), offset << 2);
+
+	switch (offset << 2) {
+		case 0x00: // port G data
+			return 0xFF;
+		case 0x04: // port H data
+			return 0xFF;
+		default:
+			return 0;
+	}
+}
+
 
 uint32_t pixter_multimedia_state::gpioij_r(offs_t offset) {
 	logerror("%s: GPIOIJ read 0x%04X\n", machine().describe_context(), offset << 2);
