@@ -65,6 +65,7 @@ public:
 		: driver_device(mconfig, type, tag)
 		, m_palette(*this, "palette")
 		, m_screen(*this, "screen")
+		, m_touch(*this, { "TOUCHX", "TOUCHY", "TOUCH" })
 		, m_cart(*this, "cartslot")
 		, m_maincpu(*this, "maincpu")
 		, m_ndcs0(*this, "ndcs0")
@@ -123,6 +124,8 @@ private:
 
 	required_device<palette_device> m_palette;
 	required_device<screen_device> m_screen;
+
+	required_ioport_array<3> m_touch;
 
 	required_device<generic_slot_device> m_cart;
 	required_device<arm7_cpu_device> m_maincpu;
@@ -342,11 +345,26 @@ uint32_t pixter_multimedia_state::adc_r(offs_t offset) {
 	logerror("%s: ADC read 0x%04X\n", machine().describe_context(), offset << 2);
 	switch (offset << 2) {
 		case 0x08: // result
-			if (adc_count > 0)
-				--adc_count;
-			return 0x3FF0 | (((m_adc[0x10 >> 2] & 0xF) -  adc_count) & 0xF);
+			{
+				if (adc_count > 0)
+					--adc_count;
+				unsigned index = ((m_adc[0x10 >> 2] & 0xF) -  adc_count);
+				unsigned hc = m_adc[(0x24 >> 2) + index], lc = m_adc[(0x64 >> 2) + index];
+				unsigned result = 0x3ff;
+				if (hc == 0xFF80 && lc == 0x1080) {
+					result = m_touch[2]->read() ? 0 : 0x3ff;
+				} else if (hc == 0xFFA0 && lc == 0x1080) {
+					result = 0;
+				} else if (hc == 0xFF91 && lc == 0x0015) {
+					result = (m_touch[1]->read() * 1023) / 160;
+				} else if (hc == 0xFF82 && lc == 0x00A2) {
+					result = 1023 - (m_touch[0]->read() * 1023) / 160;
+				}
+				logerror("%s: ADC read result 0x%04X 0x%04x (H=%04x L=%04x)\n", machine().describe_context(), offset << 2, (result << 4) | (index & 0xF), hc, lc);
+				return (result << 6) | (index & 0xF);
+			}
 		case 0x1C: // IRQ status
-			return 4;
+			return (m_touch[2]->read() ? 8 : 0) | 4;
 		case 0x20: // FIFO status
 			if (adc_count == 16)
 				return 8;
@@ -449,6 +467,17 @@ void pixter_multimedia_state::screen_vblank(int state)
 }
 
 static INPUT_PORTS_START( pixter_multimedia )
+
+	PORT_START("TOUCHX")
+	PORT_BIT(0x3ff, 80, IPT_LIGHTGUN_X) PORT_CROSSHAIR(X, 1.0, 0.0, 0) PORT_MINMAX(0,159) PORT_SENSITIVITY(45) PORT_KEYDELTA(13)
+
+	PORT_START("TOUCHY")
+	PORT_BIT(0x3ff, 80, IPT_LIGHTGUN_Y) PORT_CROSSHAIR(Y, 1.0, 0.0, 0) PORT_MINMAX(0,159) PORT_SENSITIVITY(45) PORT_KEYDELTA(13)
+
+	PORT_START("TOUCH")
+	PORT_BIT(0x0001, IP_ACTIVE_HIGH, IPT_BUTTON1) PORT_NAME("Touch")
+	PORT_BIT(0xfffe, IP_ACTIVE_HIGH, IPT_UNUSED)
+
 INPUT_PORTS_END
 
 void pixter_multimedia_state::pixter_multimedia(machine_config &config)
